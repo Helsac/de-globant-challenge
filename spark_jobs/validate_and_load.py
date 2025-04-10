@@ -23,7 +23,7 @@ log_filename = f"logs/etl_{log_id}.log"
 log_formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
 file_handler = RotatingFileHandler(log_filename, maxBytes=5*1024*1024, backupCount=3)
 file_handler.setFormatter(log_formatter)
-data_path = "data/uploads/"
+data_path = "/opt/spark/app/data/uploads"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -269,8 +269,8 @@ def main():
         etl_result["status"] = "FAILED"
         etl_result["errors"].append(str(e))
 
-    os.makedirs("etl_outputs", exist_ok=True)
-    output_path = f"etl_outputs/etl_result_{batch_id}.json"
+    os.makedirs("/opt/spark/app/etl_outputs", exist_ok=True)
+    output_path = f"/opt/spark/app/etl_outputs/etl_result_{batch_id}.json"
     with open(output_path, "w") as f:
         json.dump(etl_result, f)
 

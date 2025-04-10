@@ -5,7 +5,7 @@ import logging
 from config.db_config import get_native_connection
 from queries_sql.sql_queries import SQL_QUERIES
 
-UPLOAD_DIR = "data/uploads"
+UPLOAD_DIR = "/opt/spark/app/data/uploads"
 
 def process_csv_upload(file: UploadFile, table_name: str):
     """

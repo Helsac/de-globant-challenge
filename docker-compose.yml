@@ -1,9 +1,11 @@
 services:
-  mysql_container:
+  mysql:
     image: mysql:8.0
     container_name: mysql_container
+    networks:
+      - mynetwork
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: rootpass
       MYSQL_DATABASE: globant_db
       MYSQL_USER: globant_user
       MYSQL_PASSWORD: globant_pass
@@ -11,13 +13,15 @@ services:
       - "3306:3306"
     volumes:
       - globant_mysql_data:/var/lib/mysql
-      - ./setup/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+      - ./inits/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
 
-  mysql_test_container:
+  mysql_test:
     image: mysql:8.0
     container_name: mysql_test_container
+    networks:
+      - mynetwork
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: rootpass
       MYSQL_DATABASE: test_db
       MYSQL_USER: test_user
       MYSQL_PASSWORD: test_pass
@@ -25,19 +29,61 @@ services:
       - "3307:3306"
     volumes:
       - globant_mysql_test_data:/var/lib/mysql
-      - ./setup/init_db_test.sql:/docker-entrypoint-initdb.d/init_db_test.sql
+      - ./inits/init_test_db.sql:/docker-entrypoint-initdb.d/init_test_db.sql
 
-  fastapi_app:
-    build: .
-    container_name: fastapi_app
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: fastapi_container
     ports:
       - "8000:8000"
-    depends_on:
-      - mysql_container
-      - mysql_test_container
+    networks:
+      - mynetwork
     volumes:
-      - .:/app
+      - ./data/uploads:/opt/spark/app/data/uploads
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/etl_outputs:/opt/spark/app/etl_outputs
+    depends_on:
+      - mysql
+      - mysql_test
+      - spark
+    environment:
+      - SPARK_MASTER=spark:7077
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_HOST_TEST=mysql_test
+      - DB_PORT_TEST=3306
+
+  spark:
+    image: bitnami/spark:3.3
+    container_name: spark_container
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    networks:
+      - mynetwork
+    environment:
+      - SPARK_MODE=master
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_HOST_TEST=mysql_test
+      - DB_PORT_TEST=3306
+    volumes:
+      - ./spark_jobs:/opt/spark/app/spark_jobs
+      - ./config:/opt/spark/app/config
+      - ./data/uploads:/opt/spark/app/data/uploads
+      - ./mysql-connector-java-8.0.33.jar:/opt/spark/jars/mysql-connector-java-8.0.33.jar
+      - ./data/etl_outputs:/opt/spark/app/etl_outputs
+    working_dir: /opt/spark/app
+    depends_on:
+      - mysql
+      - mysql_test
 
 volumes:
   globant_mysql_data:
   globant_mysql_test_data:
+
+networks:
+  mynetwork:
+    driver: bridge

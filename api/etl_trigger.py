@@ -1,28 +1,28 @@
-import subprocess
 import os
 import json
 from datetime import datetime
+import docker
 
 def run_etl_job():
     try:
-        env = os.environ.copy()
-        env["PYTHONPATH"] = "."
-
         batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = f"etl_outputs/etl_result_{batch_id}.json"
+        output_file = f"/opt/spark/app/etl_outputs/etl_result_{batch_id}.json"
 
-        result = subprocess.run(
-            [
-                "cmd.exe", "/c", "spark-submit",
-                "--jars", "mysql-connector-java-8.0.33.jar",
-                "--conf", f"spark.batchId={batch_id}",
-                "spark_jobs/validate_and_load.py"
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-            env=env
-        )
+        client = docker.from_env()
+        container = client.containers.get("spark_container")
+
+        # Comando spark-submit
+        cmd = [
+            "/usr/local/bin/spark-submit",
+            "--jars", "/opt/bitnami/spark/jars/mysql-connector-java-8.0.33.jar",
+            "--driver-class-path", "/opt/bitnami/spark/jars/mysql-connector-java-8.0.33.jar",
+            "--conf", f"spark.executor.extraClassPath=/opt/bitnami/spark/jars/mysql-connector-java-8.0.33.jar",
+            "--conf", f"spark.batchId={batch_id}",
+            "spark_jobs/validate_and_load.py"
+        ]
+
+        exec_result = container.exec_run(cmd, stdout=True, stderr=True)
+        logs = exec_result.output.decode()
 
         if not os.path.exists(output_file):
             raise FileNotFoundError(f"ETL output file not found: {output_file}")
@@ -32,13 +32,14 @@ def run_etl_job():
 
         etl_result["batch_id"] = batch_id
         etl_result["log_file"] = f"etl_{batch_id}.log"
+        etl_result["logs"] = logs
 
         return etl_result
 
-    except subprocess.CalledProcessError as e:
+    except docker.errors.APIError as e:
         return {
             "status": "FAILED",
-            "errors": ["ETL execution failed", e.stderr.strip()]
+            "errors": ["Docker API error", str(e)]
         }
     except Exception as e:
         return {

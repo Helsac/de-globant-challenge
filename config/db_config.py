@@ -1,16 +1,16 @@
 import os
 
 DB_CONFIG = {
-    "host": "localhost",
-    "port": 3306,
+    "host": os.getenv("DB_HOST", "mysql"),
+    "port": int(os.getenv("DB_PORT", 3306)),
     "user": "globant_user",
     "password": "globant_pass",
     "database": "globant_db"
 }
 
 TEST_DB_CONFIG = {
-    "host": "localhost",
-    "port": 3307,
+    "host": os.getenv("DB_HOST_TEST", "mysql_test"),
+    "port": int(os.getenv("DB_PORT_TEST", 3306)),
     "user": "test_user",
     "password": "test_pass",
     "database": "test_db"
