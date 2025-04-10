@@ -1,140 +1,169 @@
-# Globant Data Engineering Challenge 🚀
+# Globant Data Engineering Challenge
 
-Este proyecto resuelve el coding challenge propuesto por Globant para el rol de Data Engineer. Incluye un pipeline ETL desarrollado con PySpark, una API REST con FastAPI y pruebas automatizadas.
-
----
-
-## Estructura del Proyecto
-
-```
-.
-├── api/                     # Endpoints y servicios de la API
-├── config/                  # Configuración de la DB (prod y test)
-├── data/uploads/            # Carpeta donde se suben los CSVs a cargar
-├── etl_outputs/             # Resultados del ETL (JSON)
-├── logs/                    # Logs rotativos de cada ejecución ETL
-├── queries_sql/             # Queries SQL centralizadas
-├── spark_jobs/              # Script PySpark de validación y carga
-├── tests/                   # Tests automáticos con pytest
-├── Dockerfile               # Imagen Docker de FastAPI
-├── docker-compose.yml       # Contenedores: API + MySQL + Test DB
-├── main_api.py              # Punto de entrada de la API
-├── requirements.txt         # Dependencias del proyecto
-```
+Welcome to my solution for the Data Engineering Coding Challenge proposed by Globant. This repository contains a complete, scalable, and production-ready ETL architecture using modern data engineering tools. It covers CSV ingestion, transformation and validation with PySpark, automated loading into a MySQL database, and a REST API built with FastAPI to interact with the data and trigger ETL processes.
 
 ---
 
-## Setup local
+## 🌐 Project Overview
 
-### 1. Clonar repositorio
+This project simulates a data migration scenario where historical hiring data must be ingested and analyzed. The solution consists of:
 
-```bash
-git clone <REPO_URL>
-cd globant
+- **FastAPI**: REST API to receive CSVs, trigger ETL, and expose metrics.
+- **PySpark**: Distributed data processing for validation and loading.
+- **MySQL**: SQL-based database for data persistence and metric calculation.
+- **Docker**: Full containerization of services for portable execution.
+- **Pytest**: Automated testing suite.
+- **ETL Status Tracking**: Batch control and rollback support.
+
+This project is fully dockerized and can be executed on any machine with Docker and Docker Compose installed.
+
+---
+
+## 🚀 Architecture
+
+```
++------------+         +-----------+          +------------+
+|  CSV File  |  --->   |  FastAPI  |  ----+--> |   MySQL    |
++------------+         +-----------+     |    +------------+
+                                        |
+                                        v
+                                  +------------+
+                                  |  PySpark   |
+                                  +------------+
 ```
 
-### 2. Crear entorno virtual
+- Each CSV is uploaded via a FastAPI endpoint.
+- Files are stored in a shared volume accessible by Spark.
+- Spark validates and loads data into MySQL.
+- FastAPI also queries MySQL to expose metric endpoints.
+- All services are orchestrated and isolated using Docker Compose.
 
-```bash
-python -m venv venv
-venv\Scripts\activate  # Windows
-source venv/bin/activate  # Linux/Mac
+---
+
+## 📃 Endpoints
+
+### Upload CSV
+- `POST /upload_csv/{table_name}`
+  - Accepts: `departments.csv`, `jobs.csv`, `hired_employees.csv`
+
+### Trigger ETL
+- `POST /run_etl`
+  - Launches the PySpark job to load data into MySQL
+
+### Metrics
+- `GET /metrics/hires_per_quarter`
+  - Employees hired by department and job in 2021 per quarter
+- `GET /metrics/departments_above_avg`
+  - Departments that hired more employees than average in 2021
+
+---
+
+## 🧰 SQL Logic
+
+### 1. Hires Per Quarter
+Returns employees hired per department/job per quarter of 2021:
+```sql
+SELECT d.department, j.job,
+  SUM(IF(QUARTER(h.datetime) = 1, 1, 0)) AS Q1,
+  SUM(IF(QUARTER(h.datetime) = 2, 1, 0)) AS Q2,
+  SUM(IF(QUARTER(h.datetime) = 3, 1, 0)) AS Q3,
+  SUM(IF(QUARTER(h.datetime) = 4, 1, 0)) AS Q4
+FROM hired_employees h
+JOIN departments d ON h.department_id = d.id
+JOIN jobs j ON h.job_id = j.id
+WHERE YEAR(h.datetime) = 2021
+GROUP BY d.department, j.job
+ORDER BY d.department, j.job;
 ```
 
-### 3. Instalar dependencias
-
-```bash
-pip install -r requirements.txt
+### 2. Departments Above Average
+```sql
+SELECT d.id, d.department, COUNT(*) AS hired
+FROM hired_employees h
+JOIN departments d ON h.department_id = d.id
+WHERE YEAR(h.datetime) = 2021
+GROUP BY d.id, d.department
+HAVING hired > (
+    SELECT AVG(dept_count) FROM (
+        SELECT COUNT(*) AS dept_count
+        FROM hired_employees
+        WHERE YEAR(datetime) = 2021
+        GROUP BY department_id
+    ) AS dept_avg
+)
+ORDER BY hired DESC;
 ```
 
 ---
 
-## Docker
+## 🧳 ETL Details
+- CSVs are validated using Spark with custom schemas
+- Duplicate IDs, nulls, and orphan FKs are handled
+- Batch status tracked in `batch_control`
+- On failure, inserted rows are rolled back
+- Results are logged and saved to JSON
 
-### Levantar entorno completo (API + MySQL + TestDB)
+---
+
+## 🛠️ Technologies
+- Python 3.8
+- FastAPI
+- PySpark 3.3
+- MySQL 8
+- Docker + Compose
+- Pytest
+
+---
+
+## 🌐 Deployment
+
+This project is fully containerized and platform-independent. To deploy locally:
 
 ```bash
+# Reset environment (includes DB volume reset)
+docker-compose down -v --remove-orphans
+
+# Rebuild from scratch
+docker-compose build --no-cache
+
+# Start the full stack
 docker-compose up -d
 ```
 
----
-
-## API Endpoints (FastAPI)
-
-Una vez levantada la API en `http://localhost:8000`, accede a la documentación en:
-
-Swagger UI: [`http://localhost:8000/docs`](http://localhost:8000/docs)
-
-### Endpoints principales:
-
-- `POST /upload_csv/{table_name}` → Subida de CSVs
-- `POST /run_etl` → Ejecuta el proceso ETL completo
-- `GET /metrics/hires_per_quarter` → Contrataciones por trimestre
-- `GET /metrics/departments_above_avg` → Departamentos con más contrataciones
+To deploy to the cloud, this project can be extended to use:
+- **AWS**: ECS (API), S3 (CSV), RDS (MySQL), EMR or Glue (ETL)
+- **GCP**: Cloud Run (API), Cloud SQL (DB), DataProc (ETL), Cloud Storage
 
 ---
 
-## Proceso ETL (PySpark)
-
-El proceso ETL hace lo siguiente:
-
-1. Lee los archivos CSV cargados en `data/uploads/`
-2. Valida duplicados, claves foráneas, campos nulos, etc.
-3. Inserta los nuevos registros en MySQL
-4. Guarda un `.json` con el resumen del batch
-5. Genera un `.log` con el detalle de la ejecución
-
-Se puede ejecutar manualmente:
+## ✅ Tests
 
 ```bash
-spark-submit --jars mysql-connector-java-8.0.33.jar spark_jobs/validate_and_load.py
+# Run API tests from container
+docker-compose exec api env PYTHONPATH=/app pytest tests/
 ```
 
----
-
-## Pruebas
-
-Este proyecto incluye pruebas automatizadas:
-
-```bash
-set IS_TEST=1 && pytest
-```
-
-Cubre:
-
-- Subida de archivos
-- Métricas
-- ETL completo (mock + real)
-- Casos de error
+Tests cover:
+- File upload
+- Invalid tables
+- ETL execution
+- Metric endpoints
 
 ---
 
-##  Cloud-ready
+## 🚫 Limitations & Future Work
 
-Este proyecto está listo para deploy en cualquier plataforma cloud:
-
-- **Base de datos:** Contenerizada
-- **ETL:** Compatible con Spark local o cluster
-- **API:** Dockerizada y portable
-- **Logging:** Local + archivo
-- **Pruebas:** Independientes, con base de datos de test
+- Currently supports only local file upload
+- No auth layer on the API
+- Next step: Deploy to AWS or GCP with object storage & autoscaling
 
 ---
 
-##  Bonus
+## 🚀 Repo
 
-- Batch ID único por ejecución
-- Rollback completo en caso de errores
-- Logging detallado (`logs/`)
-- Validaciones robustas por tabla
-- Modularización profesional de código
+https://github.com/Helsac/de-globant-challenge
 
----
-
-## 💡 Autor
-
-Desarrollado por Jonathan Villegas  — Abril 2025\
-Desafío técnico para Globant.
+Feel free to check commits for evolution of the project and development process.
 
 ---
 
