@@ -10,13 +10,14 @@ import json
 import os
 from datetime import datetime
 
-IS_TEST = os.environ.get("IS_TEST", "0") == "1"
-
 try:
     spark = SparkSession.builder.getOrCreate()
     log_id = spark.sparkContext.getConf().get("spark.batchId", datetime.now().strftime("%Y%m%d_%H%M%S"))
+    is_test_str = spark.sparkContext.getConf().get("spark.isTest", "False")
+    IS_TEST = is_test_str.lower() == "true"
 except:
     log_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    IS_TEST = False
 
 os.makedirs("logs", exist_ok=True)
 log_filename = f"logs/etl_{log_id}.log"
@@ -176,7 +177,7 @@ def update_batch_status(batch_id, status):
         status (str): New status (e.g., PENDING, SUCCESS, FAILED).
     """
     logging.info(f"Updating batch status to {status} for batch_id: {batch_id}")
-    with get_native_connection() as conn:
+    with get_native_connection(test=IS_TEST) as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
                 INSERT INTO batch_control (batch_id, status)
@@ -194,7 +195,7 @@ def rollback_batch(batch_id, error):
         error (Exception): The exception that caused the rollback.
     """
     logging.error(f"Rollback initiated for batch {batch_id} due to error: {error}")
-    with get_native_connection() as conn:
+    with get_native_connection(test=IS_TEST) as conn:
         with conn.cursor() as cursor:
             cursor.execute("DELETE FROM hired_employees WHERE batch_id = %s", (batch_id,))
             cursor.execute("DELETE FROM jobs WHERE batch_id = %s", (batch_id,))
@@ -249,6 +250,7 @@ def main():
         "errors": []
     }
     try:
+        update_batch_status(batch_id, "PENDING")
         departments_csv, jobs_csv, hired_df = load_csv_data(spark)
         new_departments, new_jobs, hired_validated, validation_errors = validate_data(
             spark, departments_csv, jobs_csv, hired_df, jdbc_url, props, batch_id)
@@ -258,7 +260,6 @@ def main():
             etl_result["errors"].extend(validation_errors)
             rollback_batch(batch_id, "Validation errors")
         else:
-            update_batch_status(batch_id, "PENDING")
             inserted_counts = insert_data(new_departments, new_jobs, hired_validated, jdbc_url, props)
             etl_result["inserted"] = inserted_counts
             update_batch_status(batch_id, "SUCCESS")

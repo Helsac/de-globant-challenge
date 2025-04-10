@@ -7,7 +7,7 @@ def run_etl_job():
     try:
         batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = f"/opt/spark/app/etl_outputs/etl_result_{batch_id}.json"
-
+        isTest = os.getenv("IS_TEST", "False") == "True"
         client = docker.from_env()
         container = client.containers.get("spark_container")
 
@@ -18,6 +18,7 @@ def run_etl_job():
             "--driver-class-path", "/opt/bitnami/spark/jars/mysql-connector-java-8.0.33.jar",
             "--conf", f"spark.executor.extraClassPath=/opt/bitnami/spark/jars/mysql-connector-java-8.0.33.jar",
             "--conf", f"spark.batchId={batch_id}",
+            "--conf", f"spark.isTest={isTest}",
             "spark_jobs/validate_and_load.py"
         ]
 

@@ -8,7 +8,7 @@ UPLOAD_DIR = "data/uploads"
 client = TestClient(app)
 
 def setup_module(module):
-    os.environ["IS_TEST"] = "1"
+    os.environ["IS_TEST"] = "True"
 
     sample_files = {
         "departments": "tests/sample_departments.csv",
@@ -28,7 +28,7 @@ def teardown_module(module):
     for filename in os.listdir(UPLOAD_DIR):
         if filename.endswith(".csv"):
             os.remove(os.path.join(UPLOAD_DIR, filename))
-    os.environ["IS_TEST"] = "0"
+    os.environ["IS_TEST"] = "False"
 
 def test_upload_csv_departments():
     filepath = "tests/sample_departments.csv"
