@@ -1,0 +1,43 @@
+services:
+  mysql_container:
+    image: mysql:8.0
+    container_name: mysql_container
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: globant_db
+      MYSQL_USER: globant_user
+      MYSQL_PASSWORD: globant_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - globant_mysql_data:/var/lib/mysql
+      - ./setup/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+
+  mysql_test_container:
+    image: mysql:8.0
+    container_name: mysql_test_container
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: test_db
+      MYSQL_USER: test_user
+      MYSQL_PASSWORD: test_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - globant_mysql_test_data:/var/lib/mysql
+      - ./setup/init_db_test.sql:/docker-entrypoint-initdb.d/init_db_test.sql
+
+  fastapi_app:
+    build: .
+    container_name: fastapi_app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mysql_container
+      - mysql_test_container
+    volumes:
+      - .:/app
+
+volumes:
+  globant_mysql_data:
+  globant_mysql_test_data:
