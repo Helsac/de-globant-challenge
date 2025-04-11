@@ -4,7 +4,7 @@ import uuid
 import logging
 from logging.handlers import RotatingFileHandler
 from config.db_config import get_jdbc_url, get_native_connection
-from spark_jobs.utils import read_csv_with_schema
+from spark_jobs.utils import read_csv_with_schema, is_csv_valid_against_schema
 from spark_jobs.schemas import departments_schema, jobs_schema, hired_schema
 import json
 import os
@@ -25,6 +25,7 @@ log_formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
 file_handler = RotatingFileHandler(log_filename, maxBytes=5*1024*1024, backupCount=3)
 file_handler.setFormatter(log_formatter)
 data_path = "/opt/spark/app/data/uploads"
+validation_errors = []
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,7 +51,7 @@ def create_spark_session():
 
 def load_csv_data(spark):
     """
-    Loads CSV files from the data directory if they exist.
+    Loads CSV files from the data directory if they exist and pass schema validation.
 
     Args:
         spark (SparkSession): Spark session.
@@ -68,20 +69,28 @@ def load_csv_data(spark):
     jobs_csv = spark.createDataFrame([], jobs_schema)
     hired_df = spark.createDataFrame([], hired_schema)
 
-    #Checks if the CSV files exists.
     if os.path.exists(departments_path):
-        departments_csv = read_csv_with_schema(spark, departments_path, departments_schema)
+        if is_csv_valid_against_schema(departments_path, departments_schema):
+            departments_csv = read_csv_with_schema(spark, departments_path, departments_schema)
+        else:
+            validation_errors.append("departments.csv does not match the expected schema.")
     else:
         logging.warning("departments.csv not found, skipping.")
 
     if os.path.exists(jobs_path):
-        jobs_csv = read_csv_with_schema(spark, jobs_path, jobs_schema)
+        if is_csv_valid_against_schema(jobs_path, jobs_schema):
+            jobs_csv = read_csv_with_schema(spark, jobs_path, jobs_schema)
+        else:
+            validation_errors.append("jobs.csv does not match the expected schema.")
     else:
         logging.warning("jobs.csv not found, skipping.")
 
     if os.path.exists(hired_path):
-        hired_df = read_csv_with_schema(spark, hired_path, hired_schema)
-        hired_df = hired_df.withColumn("datetime", to_timestamp("datetime", "yyyy-MM-dd'T'HH:mm:ssX"))
+        if is_csv_valid_against_schema(hired_path, hired_schema):
+            hired_df = read_csv_with_schema(spark, hired_path, hired_schema)
+            hired_df = hired_df.withColumn("datetime", to_timestamp("datetime", "yyyy-MM-dd'T'HH:mm:ssX"))
+        else:
+            validation_errors.append("hired_employees.csv does not match the expected schema.")
     else:
         logging.warning("hired_employees.csv not found, skipping.")
 
@@ -104,7 +113,6 @@ def validate_data(spark, departments_csv, jobs_csv, hired_df, jdbc_url, props, b
         tuple: new_departments, new_jobs, hired_validated, validation_errors
     """
     logging.info("Starting data validation...")
-    validation_errors = []
     new_departments = spark.createDataFrame([], departments_csv.schema)
     new_jobs = spark.createDataFrame([], jobs_csv.schema)
     hired_validated = spark.createDataFrame([], hired_df.schema)

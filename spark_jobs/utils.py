@@ -28,3 +28,23 @@ def write_to_mysql(df, url, table, properties):
         properties (dict): JDBC properties (user, password, driver).
     """
     df.write.jdbc(url=url, table=table, mode="append", properties=properties)
+
+def is_csv_valid_against_schema(csv_path, schema):
+    """
+    Checks if all rows in the CSV file match the number of fields in the given schema.
+
+    Args:
+        csv_path (str): Path to the CSV file.
+        schema (StructType): PySpark schema to validate against.
+
+    Returns:
+        bool: True if the CSV is valid, False otherwise.
+    """
+    expected_num_columns = len(schema.fields)
+
+    with open(csv_path, "r", encoding="utf-8") as f:
+        for line in f:
+            fields = line.strip().split(",")
+            if len(fields) != expected_num_columns:
+                return False
+    return True
